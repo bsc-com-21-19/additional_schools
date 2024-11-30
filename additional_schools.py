@@ -1,187 +1,122 @@
-from qgis.core import QgsProject, QgsVectorLayer, QgsField, QgsExpression
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QVariant
+from qgis.core import (
+    QgsProject, QgsVectorLayer, QgsField, QgsFeature,
+    QgsProcessingAlgorithm, QgsProcessingParameterFeatureSource,
+    QgsProcessingParameterField, QgsProcessingParameterFeatureSink
+)
+from qgis.PyQt.QtCore import QVariant
+from qgis.PyQt.QtWidgets import QAction
+from .additional_schools_dialog import AdditionalSchoolsDialog
 
 class AdditionalSchools:
-    def __init__(self, iface):
-        """Constructor."""
-        self.iface = iface
-        self.dialog = AdditionalSchoolsDialog()  # Initialize the dialog
-        self.dialog.button_execute.clicked.connect(self.run)  # Connect the button to the run method
-        self.action = None
+    INPUT_SCHOOLS_LAYER = 'INPUT_SCHOOLS_LAYER'
+    INPUT_CITY_LAYER = 'INPUT_CITY_LAYER'
+    POPULATION_FIELD = 'POPULATION_FIELD'
+    OUTPUT_LAYER = 'OUTPUT_LAYER'
+    REQUIRED_SCHOOL_FIELD = 'REQUIRED_SCHOOLS'
 
-    def classFactory(self, iface):
-        """This method is used to initialize the plugin."""
-        return AdditionalSchools(iface)
+    def __init__(self, iface):
+        """
+        Constructor method that initializes the plugin.
+        :param iface: The QGIS interface instance
+        """
+        self.iface = iface  # Store iface for use in other methods if needed
+        self.output_layer = None
+        self.dialog = AdditionalSchoolsDialog()
+
+    def name(self):
+        return 'additional_schools'
+
+    def displayName(self):
+        return 'Calculate Required Schools'
 
     def initGui(self):
-        """Initialize the plugin's GUI (e.g., toolbar, menu)."""
-        self.action = QAction("Additional Schools", self.iface.mainWindow())
-        self.action.triggered.connect(self.run)  # Connect to the run method
+        """
+        This method initializes the plugin's GUI elements.
+        """
+        self.action = QAction('Additional Schools', self.iface.mainWindow())
+        self.action.triggered.connect(self.run)
 
-        # Add the action to the QGIS toolbar
+        # Add the action to the QGIS interface (e.g., to the Plugins menu)
+        self.iface.addPluginToMenu('&Additional Schools', self.action)
         self.iface.addToolBarIcon(self.action)
 
     def unload(self):
-        """Clean up the plugin (e.g., remove toolbar actions)."""
-        if self.action:
-            self.iface.removeToolBarIcon(self.action)
+        """
+        This method removes the plugin's GUI elements.
+        """
+        self.iface.removePluginMenu('&Additional Schools', self.action)
+        self.iface.removeToolBarIcon(self.action)
 
     def run(self):
-        """Start the plugin's functionality."""
-        # Get the user inputs from the dialog
-        city_layer_name = self.dialog.comboBox_cityLayer.currentText()
-        area_layer_name = self.dialog.comboBox_areaLayer.currentText()
-        eas_layer_name = self.dialog.comboBox_easLayer.currentText()
-        schools_layer_name = self.dialog.comboBox_schoolsLayer.currentText()
-        population_field = self.dialog.comboBox_populationField.currentText()
-        people_per_school = self.dialog.spinBox_peoplePerSchool.value()
+        """
+        This method is called when the plugin's action is triggered.
+        """
+        # Show the dialog when the plugin is run
+        self.dialog.exec_()
 
-        # Validate the input
-        if not city_layer_name or not area_layer_name or not eas_layer_name or not schools_layer_name:
-            QMessageBox.warning(self.iface.mainWindow(), "Input Error", "Please fill in all the fields.")
-            return
+    def initAlgorithm(self, config=None):
+        """
+        Initializes the algorithm parameters.
+        """
+        self.addParameter(
+            QgsProcessingParameterFeatureSource(self.INPUT_SCHOOLS_LAYER, 'Schools Layer', types=[QgsProcessing.TypeVectorPoint])
+        )
+        self.addParameter(
+            QgsProcessingParameterFeatureSource(self.INPUT_CITY_LAYER, 'City Layer', types=[QgsProcessing.TypeVectorPolygon])
+        )
+        self.addParameter(
+            QgsProcessingParameterField(self.POPULATION_FIELD, 'Population Field', parentLayerParameterName=self.INPUT_CITY_LAYER)
+        )
+        self.addParameter(
+            QgsProcessingParameterFeatureSink(self.OUTPUT_LAYER, 'Output Layer', type=QgsProcessing.TypeVectorPolygon)
+        )
 
-        # Fetch the selected layers by name
-        city_layer = self._get_layer_by_name(city_layer_name)
-        area_layer = self._get_layer_by_name(area_layer_name)
-        eas_layer = self._get_layer_by_name(eas_layer_name)
-        schools_layer = self._get_layer_by_name(schools_layer_name)
+    def processAlgorithm(self, parameters, context, feedback):
+        """
+        Main processing method where the algorithm logic happens.
+        """
+        schools_layer = self.parameterAsSource(parameters, self.INPUT_SCHOOLS_LAYER, context)
+        city_layer = self.parameterAsSource(parameters, self.INPUT_CITY_LAYER, context)
+        population_field = self.parameterAsString(parameters, self.POPULATION_FIELD, context)
 
-        if not city_layer or not area_layer or not eas_layer or not schools_layer:
-            QMessageBox.warning(self.iface.mainWindow(), "Layer Error", "One or more layers could not be found.")
-            return
+        output_layer = self.parameterAsSink(parameters, self.OUTPUT_LAYER, context)
 
-        # Extract schools within selected city layer
-        self._extract_schools_in_lilongwe(city_layer, schools_layer)
+        self._calculate_required_schools(city_layer, schools_layer, population_field)
 
-        # Join layers to calculate population sum per area
-        self._join_city_with_area(city_layer, area_layer, population_field)
+        return {self.OUTPUT_LAYER: output_layer}
 
-        # Count schools in each area
-        count_layer = self._count_schools_in_areas(schools_layer, area_layer)
+    def _calculate_required_schools(self, city_layer, schools_layer, population_field):
+        """
+        Calculates the required number of schools for each city area based on population.
+        """
+        required_schools_field = self.REQUIRED_SCHOOL_FIELD
+        school_capacity = 1000  # Define how many people each school serves, e.g., 1000 people per school
 
-        # Join the count layer with the city, area, and eas layer
-        joined_layer = self._join_count_with_population(area_layer, count_layer)
+        # Start editing the city layer to add the required schools field
+        if city_layer.isEditable():
+            city_layer.startEditing()
+        else:
+            city_layer.startEditing()
 
-        # Calculate the required schools per area
-        self._calculate_required_schools(joined_layer, people_per_school)
+        # Add the 'required_schools' field if it doesn't already exist
+        if required_schools_field not in [field.name() for field in city_layer.fields()]:
+            city_layer.dataProvider().addAttributes([QgsField(required_schools_field, QVariant.Int)])
+            city_layer.updateFields()
 
-        # Calculate schools to be added
-        self._calculate_schools_to_be_added(joined_layer)
+        # Loop through each city polygon and calculate required schools
+        for city_feature in city_layer.getFeatures():
+            city_id = city_feature.id()
+            city_population = city_feature[population_field]
+            required_schools = city_population // school_capacity  # Basic calculation of required schools
 
-        # Add label display with the area and required schools
-        self._setup_labels_and_display(joined_layer)
+            # Assign the calculated value to the 'required_schools' field
+            city_layer.changeAttributeValue(city_id, city_layer.fields().indexFromName(required_schools_field), required_schools)
 
-        # Create and display map layout
-        self._create_map_layout()
+        city_layer.commitChanges()
 
-    def _get_layer_by_name(self, layer_name):
-        """Helper function to get a layer by name."""
-        layers = QgsProject.instance().mapLayers().values()
-        for layer in layers:
-            if layer.name() == layer_name:
-                return layer
-        return None
+        # Optional: Export the updated layer to the output sink
+        self.output_layer = city_layer
 
-    def _extract_schools_in_lilongwe(self, city_layer, schools_layer):
-        """Extract schools located in the city."""
-        processing.run("qgis:extractbylocation", {
-            'INPUT': schools_layer,
-            'PREDICATE': [0],  # Intersects predicate
-            'INTERSECT': city_layer,
-            'OUTPUT': 'memory:extracted_schools'
-        })
-
-    def _join_city_with_area(self, city_layer, area_layer, population_field):
-        """Join city layer with area layer to calculate population sum."""
-        processing.run("qgis:joinbylocation", {
-            'INPUT': city_layer,
-            'JOIN': area_layer,
-            'PREDICATE': [0],  # Intersects predicate
-            'SUMMARY_FIELD': population_field,
-            'STATISTICS': [2],  # Sum
-            'OUTPUT': 'memory:joined_city_area'
-        })
-
-    def _count_schools_in_areas(self, schools_layer, area_layer):
-        """Count schools in each area using 'Count Points in Polygon'."""
-        processing.run("qgis:countpointsinpolygon", {
-            'POINTS': schools_layer,
-            'POLYGONS': area_layer,
-            'OUTPUT': 'memory:count_layer'
-        })
-
-    def _join_count_with_population(self, area_layer, count_layer):
-        """Join the count layer with population data."""
-        processing.run("qgis:joinbylocation", {
-            'INPUT': area_layer,
-            'JOIN': count_layer,
-            'PREDICATE': [0],
-            'OUTPUT': 'memory:joined_layer'
-        })
-
-    def _calculate_required_schools(self, joined_layer, people_per_school):
-        """Calculate the required schools based on population."""
-        joined_layer.dataProvider().addAttributes([QgsField('required_schools', QVariant.Double)])
-        joined_layer.updateFields()
-        
-        for feature in joined_layer.getFeatures():
-            population = feature['SUM_' + str(population_field)]  # Assuming population is summed and named like 'SUM_Population'
-            required_schools = population / people_per_school
-            feature.setAttribute('required_schools', required_schools)
-            joined_layer.updateFeature(feature)
-
-    def _calculate_schools_to_be_added(self, joined_layer):
-        """Calculate how many schools need to be added."""
-        joined_layer.dataProvider().addAttributes([QgsField('schools_to_be_added', QVariant.Int)])
-        joined_layer.updateFields()
-        
-        for feature in joined_layer.getFeatures():
-            current_schools = feature['NUMPOINTS']  # Number of existing schools
-            required_schools = feature['required_schools']
-            schools_to_be_added = max(0, required_schools - current_schools)  # Ensure no negative values
-            feature.setAttribute('schools_to_be_added', schools_to_be_added)
-            joined_layer.updateFeature(feature)
-
-    def _setup_labels_and_display(self, joined_layer):
-        """Add labels and display concatenated data."""
-        joined_layer.dataProvider().addAttributes([QgsField('display', QVariant.String)])
-        joined_layer.updateFields()
-        
-        for feature in joined_layer.getFeatures():
-            area_name = feature['ADM_EN']  # Assuming 'ADM_EN' holds the area name
-            schools_to_add = feature['schools_to_be_added']
-            display_value = f"{area_name}: {schools_to_add} Schools to Add"
-            feature.setAttribute('display', display_value)
-            joined_layer.updateFeature(feature)
-        
-        # Set the label to show the concatenated display value
-        joined_layer.setLabelsEnabled(True)
-        label_field = QgsExpression("display")
-        joined_layer.setLabeling(QgsVectorLayerSimpleLabeling(QgsPalLayerSettings()))
-        joined_layer.labeling().fieldName = label_field
-
-    def _create_map_layout(self):
-        """Create and display the map layout with the necessary elements."""
-        layout = QgsPrintLayout(QgsProject.instance())
-        layout.initializeDefaults()
-
-        # Add the map and other elements
-        map_item = QgsLayoutItemMap(layout)
-        map_item.setRect(20, 20, 200, 200)  # Adjust size and position
-        layout.addLayoutItem(map_item)
-        
-        legend = QgsLayoutItemLegend(layout)
-        layout.addLayoutItem(legend)
-        
-        # Optional: Add North Arrow, Scale Bar, etc.
-        north_arrow = QgsLayoutItemMapNorthArrow(layout)
-        layout.addLayoutItem(north_arrow)
-        
-        scale_bar = QgsLayoutItemScaleBar(layout)
-        layout.addLayoutItem(scale_bar)
-
-        # Render the layout
-        QgsProject.instance().layoutManager().addLayout(layout)
-        layout.refresh()
+# Register your plugin
+def classFactory(iface):
+    return AdditionalSchools(iface)

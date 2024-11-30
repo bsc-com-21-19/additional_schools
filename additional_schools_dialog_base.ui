@@ -10,6 +10,7 @@
     <height>300</height>
    </rect>
   </property>
+
   <!-- City Layer -->
   <widget class="QLabel" name="label_cityLayer">
    <property name="geometry">
@@ -35,62 +36,12 @@
    </property>
   </widget>
 
-  <!-- Eas Layer -->
-  <widget class="QLabel" name="label_easLayer">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>40</y>
-     <width>380</width>
-     <height>20</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Eas Layer</string>
-   </property>
-  </widget>
-  <widget class="QComboBox" name="comboBox_easLayer">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>60</y>
-     <width>380</width>
-     <height>25</height>
-    </rect>
-   </property>
-  </widget>
-
-  <!-- Area Layer -->
-  <widget class="QLabel" name="label_areaLayer">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>80</y>
-     <width>380</width>
-     <height>20</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Area Layer</string>
-   </property>
-  </widget>
-  <widget class="QComboBox" name="comboBox_areaLayer">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>100</y>
-     <width>380</width>
-     <height>25</height>
-    </rect>
-   </property>
-  </widget>
-
   <!-- Schools Layer -->
   <widget class="QLabel" name="label_schoolsLayer">
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>120</y>
+     <y>40</y>
      <width>380</width>
      <height>20</height>
     </rect>
@@ -103,7 +54,7 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>140</y>
+     <y>60</y>
      <width>380</width>
      <height>25</height>
     </rect>
@@ -115,7 +66,7 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>160</y>
+     <y>80</y>
      <width>380</width>
      <height>20</height>
     </rect>
@@ -128,7 +79,7 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>180</y>
+     <y>100</y>
      <width>380</width>
      <height>25</height>
     </rect>
@@ -140,7 +91,7 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>210</y>
+     <y>130</y>
      <width>380</width>
      <height>20</height>
     </rect>
@@ -153,7 +104,7 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>230</y>
+     <y>150</y>
      <width>100</width>
      <height>25</height>
     </rect>
@@ -161,8 +112,11 @@
    <property name="minimum">
     <number>1</number>
    </property>
+   <property name="maximum">
+    <number>100000</number> <!-- Allow large numbers -->
+   </property>
    <property name="value">
-    <number>2000</number>
+    <number>2000</number> <!-- Default value -->
    </property>
   </widget>
 
@@ -171,13 +125,13 @@
    <property name="geometry">
     <rect>
      <x>150</x>
-     <y>260</y>
+     <y>200</y>
      <width>100</width>
      <height>30</height>
     </rect>
    </property>
    <property name="text">
-    <string>Generate Map</string>
+    <string>Calculate Schools</string>
    </property>
   </widget>
  </widget>

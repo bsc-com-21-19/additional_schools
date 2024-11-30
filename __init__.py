@@ -26,7 +26,5 @@
 
 # noinspection PyPep8Naming
 def classFactory(iface):
-    """Load additionalSchools class from file additionalSchools."""
-    from .additional_schools import additionalSchools
-    return additionalSchools(iface)
-
+    from .additional_schools import AdditionalSchools
+    return AdditionalSchools(iface)
